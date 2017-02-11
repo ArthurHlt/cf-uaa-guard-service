@@ -1,13 +1,5 @@
 ---
 applications:
-  - name: uaa-guard-broker
-    buildpack: go_buildpack
-    path: broker
-    memory: 64M
-    #env:
-    #  GUARD_BROKER_USERNAME: broker
-    #  GUARD_BROKER_PASSWORD: broker
-    #  GUARD_ROUTE_SERVICE_URL: https://guard.my-paas.com
   - name: uaa-guard-proxy
     buildpack: go_buildpack
     path: proxy
@@ -18,3 +10,16 @@ applications:
     #  GUARD_CLIENT_KEY: uaaguard
     #  GUARD_CLIENT_SECRET: uaaguard
     #  GUARD_INSECURE_SKIP_VERIFY: false # set to true to skip ssl verification
+    #  GUARD_PROXY_NAME: uaa-auth
+    #  GUARD_PROXY_DESCRIPTION: "Just add to a route and it will request cloud foundry authentication before proceeding."
+    #  GUARD_SCOPES: "openid" # can be a list, e.g.: "openid,cloud_controller.admin"
+  - name: uaa-guard-broker
+    buildpack: go_buildpack
+    path: broker
+    memory: 64M
+    #env:
+    #  GUARD_BROKER_NAME: uaa-auth
+    #  GUARD_BROKER_USERNAME: broker
+    #  GUARD_BROKER_PASSWORD: broker
+    #  GUARD_ROUTE_SERVICE_URLS: https://guard.my-paas.com #it can be a list e.g.: https://guard.my-paas.com,https://guard2.my-paas.com
+    #  GUARD_INSECURE_SKIP_VERIFY: false # set to true to skip ssl verification when loading proxies

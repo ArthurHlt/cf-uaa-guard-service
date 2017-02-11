@@ -35,6 +35,20 @@ func authHandler(res http.ResponseWriter, req *http.Request) {
 	gothic.BeginAuthHandler(res, req)
 }
 
+// give back in json name and description of this proxy (used to register plans in broker)
+func infoHandler(res http.ResponseWriter, req *http.Request) {
+	proxyInfo := struct {
+		Name        string
+		Description string
+	}{
+		Name: c.ProxyName,
+		Description: c.ProxyDescription,
+	}
+	res.Header().Set("Content-Type", "application/json")
+	b, _ := json.MarshalIndent(proxyInfo, "", "\t")
+	fmt.Fprintln(res, string(b))
+}
+
 // Handle callbacks from oauth.
 func callbackHandler(res http.ResponseWriter, req *http.Request) {
 
@@ -71,7 +85,7 @@ func newProxy(remote_user string) http.Handler {
 }
 
 func setProviders(callbackURL string) {
-	provider := cloudfoundry.New(c.LoginURL, c.ClientKey, c.ClientSecret, callbackURL, "openid")
+	provider := cloudfoundry.New(c.LoginURL, c.ClientKey, c.ClientSecret, callbackURL, c.Scopes...)
 	provider.Client = DefaultHttpClient()
 	goth.UseProviders(
 		provider,

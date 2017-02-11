@@ -22,13 +22,16 @@ const (
 )
 
 type Config struct {
-	CookieSecret       string `envconfig:"cookie_secret" required:"true"`
-	VcapAppRaw         string `envconfig:"vcap_application"`
-	InsecureSkipVerify bool   `envconfig:"insecure_skip_verify"`
-	LoginURL           string `envconfig:"login_url" required:"true"`
-	ClientKey          string `envconfig:"client_key" required:"true"`
-	ClientSecret       string `envconfig:"client_secret" required:"true"`
-	Port               string `envconfig:"port" default:"3000"`
+	CookieSecret       string   `envconfig:"cookie_secret" required:"true"`
+	VcapAppRaw         string   `envconfig:"vcap_application"`
+	InsecureSkipVerify bool     `envconfig:"insecure_skip_verify"`
+	LoginURL           string   `envconfig:"login_url" required:"true"`
+	ProxyName          string   `envconfig:"proxy_name" required:"true"`
+	ProxyDescription   string   `envconfig:"proxy_description" required:"true"`
+	Scopes             []string `envconfig:"scopes" required:"true"`
+	ClientKey          string   `envconfig:"client_key" required:"true"`
+	ClientSecret       string   `envconfig:"client_secret" required:"true"`
+	Port               string   `envconfig:"port" default:"3000"`
 }
 type VcapApplication struct {
 	Uris []string `json:"application_uris"`
@@ -53,6 +56,7 @@ func main() {
 
 	rtr := mux.NewRouter()
 
+	rtr.HandleFunc("/info", infoHandler)
 	rtr.HandleFunc("/auth/callback", callbackHandler)
 	rtr.HandleFunc("/auth", authHandler)
 	rtr.HandleFunc("/{rest:.*}", rootHandler)
@@ -74,7 +78,6 @@ func CallbackUrl() (string, error) {
 	}
 	// we try first ssl to see if it can be used
 	uri := vcapApp.Uris[0]
-	fmt.Println(vcapApp)
 	client := DefaultHttpClient()
 	resp, err := client.Get("https://" + uri)
 	if err == nil && resp.StatusCode == http.StatusTemporaryRedirect {

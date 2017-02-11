@@ -11,7 +11,7 @@ import:
 - package: github.com/gorilla/sessions
   version: f61c3ec2cf65d69e7efedfd4d060fe128882c951
 - package: github.com/kelseyhightower/envconfig
-  version: 12c18e8343f6eb5fc3a9d5c8dc353e42e6bb40b9
+  version: ^1.1.0
 - package: github.com/markbates/goth
   version: e8903baf9735b6eadeaa2425bcab290fc9967be4
   subpackages:
