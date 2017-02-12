@@ -85,4 +85,72 @@ and if you visit it you will be redirected to UAA.
 
 ### Knowing who is logged in
 
-This service will forward a header `X-AUTH-USER` with the email of the logged in user.
+This service will forward a set of headers:
+
+- `X-Auth-User` with the email of the logged in user.
+- `X-Auth-User-Email` with the email of the logged in user.
+- `X-Auth-User-Name` with the name of the logged in user.
+- `X-Auth-User-Id` with the uuid of the logged in user.
+- `X-Auth-User-Scopes` with a list of scopes of the logged in user (separate by a `,`).
+
+## Add a proxy to only make your app accessible by a cloud foundry admin
+
+As an administrator you will maybe need to restrict access to some apps in order to only make them usable
+ by other administrator.
+
+The proxy has a mechanism of roles based on scopes. If a user doesn't have a required scopes he will be rejected by the proxy.
+
+Let's have a look to an manifest example:
+
+```yml
+
+---
+buildpack: go_buildpack
+applications:
+  - name: uaa-guard-proxy-users
+    path: proxy
+    memory: 128M
+    env:
+      GUARD_COOKIE_SECRET: very-secret
+      GUARD_LOGIN_URL: https://login.my-paas.com
+      GUARD_CLIENT_KEY: uaa-guard-oauth
+      GUARD_CLIENT_SECRET: yoursecret
+      GUARD_PROXY_NAME: uaa-users-auth
+      GUARD_PROXY_DESCRIPTION: "Just add to a route and it will request cloud foundry authentication before proceeding and let any users registered on cloud foundry login."
+      GUARD_SCOPES: "openid"
+  - name: uaa-guard-proxy-admin
+    path: proxy
+    memory: 128M
+    env:
+      GUARD_COOKIE_SECRET: very-secret
+      GUARD_LOGIN_URL: https://login.my-paas.com
+      GUARD_CLIENT_KEY: uaa-guard-admin-oauth
+      GUARD_CLIENT_SECRET: yoursecret
+      GUARD_PROXY_NAME: uaa-admin-auth
+      GUARD_PROXY_DESCRIPTION: "Just add to a route and it will request cloud foundry authentication before proceeding and let only admin registered on cloud foundry login."
+      GUARD_SCOPES: "openid,cloud_controller.admin"
+  - name: uaa-guard-broker
+    path: broker
+    memory: 64M
+    env:
+      GUARD_BROKER_NAME: uaa-auth
+      GUARD_BROKER_USERNAME: broker
+      GUARD_BROKER_PASSWORD: broker
+      GUARD_ROUTE_SERVICE_URLS: https://uaa-guard-proxy-users.my-paas.com,https://uaa-guard-proxy-admin.my-paas.com
+```
+
+the app `uaa-guard-proxy-admin` has a second scope (`cloud_controller.admin`) it means that user will need
+ to have the `cloud_controller.admin` scope in order to login to the app.
+
+The broker has a second route service urls, it will add a new plan to the broker based on the name of the proxy.
+
+To update the catalog of the service broker in cloud foundry run:
+
+```sh
+cf update-service-broker \
+    uaa-auth-broker \
+    $GUARD_BROKER_USERNAME \
+    $GUARD_BROKER_PASSWORD \
+    https://uaa-guard-broker.my-paas.com \
+    --space-scoped
+```

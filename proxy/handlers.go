@@ -10,8 +10,18 @@ import (
 	"github.com/markbates/goth"
 	"github.com/markbates/goth/gothic"
 	"github.com/markbates/goth/providers/cloudfoundry"
+	"encoding/json"
+	"strings"
+	"errors"
+	"encoding/base64"
 )
 
+type UserInfo struct {
+	Scope    []string `json:"scope"`
+	UserID   string   `json:"user_id"`
+	UserName string   `json:"user_name"`
+	Email    string   `json:"email"`
+}
 // Check if the user is logged in, otherwise forward to login page.
 func rootHandler(res http.ResponseWriter, req *http.Request) {
 	s, _ := gothic.Store.Get(req, "uaa-proxy-session")
@@ -19,8 +29,45 @@ func rootHandler(res http.ResponseWriter, req *http.Request) {
 		http.Redirect(res, req, "/auth", http.StatusTemporaryRedirect)
 		return
 	}
-
-	newProxy(s.Values["user_email"].(string)).ServeHTTP(res, req)
+	var userInfo UserInfo
+	rawUserInfo := s.Values["user_info"].(string)
+	json.Unmarshal([]byte(rawUserInfo), &userInfo)
+	if !hasAllScopes(userInfo.Scope) {
+		res.WriteHeader(http.StatusUnauthorized)
+		fmt.Fprint(res, "401 Unauthorized missing one or more scopes in '" + strings.Join(c.Scopes, ", ") + "'.")
+		return
+	}
+	newProxy(userInfo).ServeHTTP(res, req)
+}
+func AccessTokenToUserInfo(accessToken string) (UserInfo, error) {
+	// access token from cf is jwt, jwt as 3 parts separate by "." second part is user information
+	splitToken := strings.Split(accessToken, ".")
+	if len(splitToken) != 3 {
+		return UserInfo{}, errors.New("This is not a jwt access token.")
+	}
+	data, err := base64.RawStdEncoding.DecodeString(splitToken[1])
+	if err != nil {
+		return UserInfo{}, err
+	}
+	var userInfo UserInfo
+	err = json.Unmarshal(data, &userInfo)
+	return userInfo, err
+}
+func hasAllScopes(actualScopes []string) bool {
+	for _, scopeReq := range c.Scopes {
+		if !hasScope(actualScopes, scopeReq) {
+			return false
+		}
+	}
+	return true
+}
+func hasScope(actualScopes []string, scopeReq string) bool {
+	for _, scope := range actualScopes {
+		if scope == scopeReq {
+			return true
+		}
+	}
+	return false
 }
 
 // Handle auth redirect
@@ -59,14 +106,23 @@ func callbackHandler(res http.ResponseWriter, req *http.Request) {
 	}
 
 	s, err := gothic.Store.Get(req, "uaa-proxy-session")
-	s.Values["user_email"] = user.Email
+	userInfo, err := AccessTokenToUserInfo(user.AccessToken)
+	if err != nil {
+		fmt.Fprintln(res, err)
+		return
+	}
+	rawUserInfo, _ := json.Marshal(userInfo)
+	s.Values["user_info"] = string(rawUserInfo)
 	s.Values["logged"] = true
-	gothic.Store.Save(req, res, s)
-
+	err = gothic.Store.Save(req, res, s)
+	if err != nil {
+		fmt.Fprintln(res, err)
+		return
+	}
 	http.Redirect(res, req, "/", http.StatusTemporaryRedirect)
 }
 
-func newProxy(remote_user string) http.Handler {
+func newProxy(userInfo UserInfo) http.Handler {
 	proxy := &httputil.ReverseProxy{
 		Director: func(req *http.Request) {
 			forwardedURL := req.Header.Get(CF_FORWARDED_URL)
@@ -76,7 +132,11 @@ func newProxy(remote_user string) http.Handler {
 			}
 			req.URL = parsedUrl
 			req.Host = parsedUrl.Host
-			req.Header.Set("X-Auth-User", remote_user)
+			req.Header.Set("X-Auth-User", userInfo.Email)
+			req.Header.Set("X-Auth-User-Email", userInfo.Email)
+			req.Header.Set("X-Auth-User-Name", userInfo.UserName)
+			req.Header.Set("X-Auth-User-Id", userInfo.UserID)
+			req.Header.Set("X-Auth-User-Scopes", strings.Join(userInfo.Scope, ","))
 
 			fmt.Println(req.Header)
 		},
