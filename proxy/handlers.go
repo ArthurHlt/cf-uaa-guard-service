@@ -14,13 +14,17 @@ import (
 	"strings"
 	"errors"
 	"encoding/base64"
+	"time"
 )
 
 type UserInfo struct {
-	Scope    []string `json:"scope"`
-	UserID   string   `json:"user_id"`
-	UserName string   `json:"user_name"`
-	Email    string   `json:"email"`
+	Scope       []string `json:"scope"`
+	UserID      string   `json:"user_id"`
+	UserName    string   `json:"user_name"`
+	Expiration  int64    `json:"exp"`
+	Email       string   `json:"email"`
+	TokenType   string   `json:"token_type"`
+	AccessToken string   `json:"access_token"`
 }
 // Check if the user is logged in, otherwise forward to login page.
 func rootHandler(res http.ResponseWriter, req *http.Request) {
@@ -32,12 +36,27 @@ func rootHandler(res http.ResponseWriter, req *http.Request) {
 	var userInfo UserInfo
 	rawUserInfo := s.Values["user_info"].(string)
 	json.Unmarshal([]byte(rawUserInfo), &userInfo)
+	if sessionExpired(req) {
+		http.Redirect(res, req, "/logout", http.StatusTemporaryRedirect)
+		return
+	}
 	if !hasAllScopes(userInfo.Scope) {
 		res.WriteHeader(http.StatusUnauthorized)
 		fmt.Fprint(res, "401 Unauthorized missing one or more scopes in '" + strings.Join(c.Scopes, ", ") + "'.")
 		return
 	}
 	newProxy(userInfo).ServeHTTP(res, req)
+}
+func sessionExpired(req *http.Request) bool {
+	s, _ := gothic.Store.Get(req, "uaa-proxy-session")
+	if s.Values["logged"] != true {
+		return true
+	}
+	var userInfo UserInfo
+	rawUserInfo := s.Values["user_info"].(string)
+	json.Unmarshal([]byte(rawUserInfo), &userInfo)
+	now := time.Now().Unix()
+	return now >= userInfo.Expiration
 }
 func AccessTokenToUserInfo(accessToken string) (UserInfo, error) {
 	// access token from cf is jwt, jwt as 3 parts separate by "." second part is user information
@@ -51,7 +70,12 @@ func AccessTokenToUserInfo(accessToken string) (UserInfo, error) {
 	}
 	var userInfo UserInfo
 	err = json.Unmarshal(data, &userInfo)
-	return userInfo, err
+	if err != nil {
+		return UserInfo{}, err
+	}
+	userInfo.TokenType = "bearer"
+	userInfo.AccessToken = accessToken
+	return userInfo, nil
 }
 func hasAllScopes(actualScopes []string) bool {
 	for _, scopeReq := range c.Scopes {
@@ -82,6 +106,27 @@ func authHandler(res http.ResponseWriter, req *http.Request) {
 	gothic.BeginAuthHandler(res, req)
 }
 
+func logoutHandler(res http.ResponseWriter, req *http.Request) {
+	s, _ := gothic.Store.Get(req, "uaa-proxy-session")
+	if s.Values["logged"] != true {
+		http.Redirect(res, req, "/auth", http.StatusTemporaryRedirect)
+		return
+	}
+	s.Values["user_info"] = ""
+	s.Values["logged"] = false
+	s.Store().Save(req, res, s)
+	http.Redirect(res, req, "/auth", http.StatusTemporaryRedirect)
+}
+func meHandler(res http.ResponseWriter, req *http.Request) {
+	if sessionExpired(req) {
+		res.WriteHeader(http.StatusUnauthorized)
+		fmt.Fprint(res, "401 Unauthorized session expired.")
+		return
+	}
+	s, _ := gothic.Store.Get(req, "uaa-proxy-session")
+	res.Header().Set("Content-Type", "application/json")
+	fmt.Fprintln(res, s.Values["user_info"].(string))
+}
 // give back in json name and description of this proxy (used to register plans in broker)
 func infoHandler(res http.ResponseWriter, req *http.Request) {
 	proxyInfo := struct {
@@ -111,7 +156,7 @@ func callbackHandler(res http.ResponseWriter, req *http.Request) {
 		fmt.Fprintln(res, err)
 		return
 	}
-	rawUserInfo, _ := json.Marshal(userInfo)
+	rawUserInfo, _ := json.MarshalIndent(userInfo, "", "\t")
 	s.Values["user_info"] = string(rawUserInfo)
 	s.Values["logged"] = true
 	err = gothic.Store.Save(req, res, s)
@@ -132,6 +177,7 @@ func newProxy(userInfo UserInfo) http.Handler {
 			}
 			req.URL = parsedUrl
 			req.Host = parsedUrl.Host
+			req.Header.Set("Authorization", userInfo.TokenType + " " + userInfo.AccessToken)
 			req.Header.Set("X-Auth-User", userInfo.Email)
 			req.Header.Set("X-Auth-User-Email", userInfo.Email)
 			req.Header.Set("X-Auth-User-Name", userInfo.UserName)

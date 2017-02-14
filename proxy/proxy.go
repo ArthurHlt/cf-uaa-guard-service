@@ -57,6 +57,8 @@ func main() {
 	rtr := mux.NewRouter()
 
 	rtr.HandleFunc("/info", infoHandler)
+	rtr.HandleFunc("/me", meHandler)
+	rtr.HandleFunc("/logout", logoutHandler)
 	rtr.HandleFunc("/auth/callback", callbackHandler)
 	rtr.HandleFunc("/auth", authHandler)
 	rtr.HandleFunc("/{rest:.*}", rootHandler)
