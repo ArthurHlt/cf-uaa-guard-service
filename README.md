@@ -1,5 +1,8 @@
 # UAA Auth Route Service [![Build Status](https://travis-ci.org/cloudfoundry-community/cf-uaa-guard-service.svg?branch=master)](https://travis-ci.org/cloudfoundry-community/cf-uaa-guard-service)
 
+**Important Note**: This is a more advanced version of [cloudfoundry-community/cf-uaa-guard-service](https://github.com/cloudfoundry-community/cf-uaa-guard-service).
+This version provide a role based authentication through users scopes, a session expiration mechanism (based on token expiration) and [useful endpoints for developpers](#useful-endpoints).
+
 (Based on https://github.com/benlaplanche/cf-basic-auth-route-service)
 
 Using the new route services functionality available in Cloud Foundry, you can now bind applications to routing services.
@@ -87,6 +90,7 @@ and if you visit it you will be redirected to UAA.
 
 This service will forward a set of headers:
 
+- `Authorization` with the bearer token.
 - `X-Auth-User` with the email of the logged in user.
 - `X-Auth-User-Email` with the email of the logged in user.
 - `X-Auth-User-Name` with the name of the logged in user.
@@ -154,3 +158,21 @@ cf update-service-broker \
     https://uaa-guard-broker.my-paas.com \
     --space-scoped
 ```
+
+## Useful endpoints
+
+- `/me` *(e.g.: `https://hello.my-paas.com/me`)*: Give information of a logged user in a json format (this useful for frontend developper), example of json:
+```json
+{
+	"scope": [
+		"openid"
+	],
+	"user_id": "c434a43b-a165-4019-b24d-5af8103028d9",
+	"user_name": "arthurhlt",
+	"exp": 1487136414,
+	"email": "arthur.halet@orange.com",
+	"token_type": "bearer",
+	"access_token": "ajwttoken"
+}
+```
+- `/logout` *(e.g.: `https://hello.my-paas.com/logout`)*: By calling this endpoint it will logout the connected user.
